@@ -1,3 +1,3 @@
-module github.com/valyala/gozstd
+module github.com/nilz3000/gozstd
 
-go 1.12
+go 1.14

@@ -55,7 +55,14 @@ func Compress(dst, src []byte) []byte {
 //
 // The given compressionLevel is used for the compression.
 func CompressLevel(dst, src []byte, compressionLevel int) []byte {
-	return compressDictLevel(dst, src, nil, compressionLevel)
+	var cctx, cctxDict *cctxWrapper
+	cctx = cctxPool.Get().(*cctxWrapper)
+
+	dst = compress(cctx, cctxDict, dst, src, nil, compressionLevel)
+
+	cctxPool.Put(cctx)
+
+	return dst
 }
 
 // CompressDict appends compressed src to dst and returns the result.
