@@ -13,11 +13,11 @@ package gozstd
 // durting calls from Go.
 // See https://github.com/golang/go/issues/24450 .
 
-static size_t ZSTD_compressCCtx_wrapper(uintptr_t ctx, uintptr_t dst, size_t dstCapacity, uintptr_t src, size_t srcSize, int compressionLevel) {
+static size_t ZSTD_compressCCtx_wrapper(void* ctx, void* dst, size_t dstCapacity, void* src, size_t srcSize, int compressionLevel) {
     return ZSTD_compressCCtx((ZSTD_CCtx*)ctx, (void*)dst, dstCapacity, (const void*)src, srcSize, compressionLevel);
 }
 
-static size_t ZSTD_compress_usingCDict_wrapper(uintptr_t ctx, uintptr_t dst, size_t dstCapacity, uintptr_t src, size_t srcSize, uintptr_t cdict) {
+static size_t ZSTD_compress_usingCDict_wrapper(void* ctx, void* dst, size_t dstCapacity, void* src, size_t srcSize, void* cdict) {
     return ZSTD_compress_usingCDict((ZSTD_CCtx*)ctx, (void*)dst, dstCapacity, (const void*)src, srcSize, (const ZSTD_CDict*)cdict);
 }
 
@@ -55,7 +55,14 @@ func Compress(dst, src []byte) []byte {
 //
 // The given compressionLevel is used for the compression.
 func CompressLevel(dst, src []byte, compressionLevel int) []byte {
-	return compressDictLevel(dst, src, nil, compressionLevel)
+	var cctx, cctxDict *cctxWrapper
+	cctx = cctxPool.Get().(*cctxWrapper)
+
+	dst = compress(cctx, cctxDict, dst, src, nil, compressionLevel)
+
+	cctxPool.Put(cctx)
+
+	return dst
 }
 
 // CompressDict appends compressed src to dst and returns the result.
@@ -149,12 +156,12 @@ func compress(cctx, cctxDict *cctxWrapper, dst, src []byte, cd *CDict, compressi
 func compressInternal(cctx, cctxDict *cctxWrapper, dst, src []byte, cd *CDict, compressionLevel int, mustSucceed bool) C.size_t {
 	if cd != nil {
 		result := C.ZSTD_compress_usingCDict_wrapper(
-			C.uintptr_t(uintptr(unsafe.Pointer(cctxDict.cctx))),
-			C.uintptr_t(uintptr(unsafe.Pointer(&dst[0]))),
+			unsafe.Pointer(cctxDict.cctx),
+			unsafe.Pointer(&dst[0]),
 			C.size_t(cap(dst)),
-			C.uintptr_t(uintptr(unsafe.Pointer(&src[0]))),
+			unsafe.Pointer(&src[0]),
 			C.size_t(len(src)),
-			C.uintptr_t(uintptr(unsafe.Pointer(cd.p))))
+			unsafe.Pointer(cd.p))
 		// Prevent from GC'ing of dst and src during CGO call above.
 		runtime.KeepAlive(dst)
 		runtime.KeepAlive(src)
@@ -164,10 +171,10 @@ func compressInternal(cctx, cctxDict *cctxWrapper, dst, src []byte, cd *CDict, c
 		return result
 	}
 	result := C.ZSTD_compressCCtx_wrapper(
-		C.uintptr_t(uintptr(unsafe.Pointer(cctx.cctx))),
-		C.uintptr_t(uintptr(unsafe.Pointer(&dst[0]))),
+		unsafe.Pointer(cctx.cctx),
+		unsafe.Pointer(&dst[0]),
 		C.size_t(cap(dst)),
-		C.uintptr_t(uintptr(unsafe.Pointer(&src[0]))),
+		unsafe.Pointer(&src[0]),
 		C.size_t(len(src)),
 		C.int(compressionLevel))
 	// Prevent from GC'ing of dst and src during CGO call above.
