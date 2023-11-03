@@ -116,6 +116,15 @@ type cctxWrapper struct {
 	cctx *C.ZSTD_CCtx
 }
 
+func CompressBound(srcSize int) int {
+	lowLimit := 131072 // 128 kB
+	var margin int
+	if srcSize < lowLimit {
+		margin = (lowLimit - srcSize) >> 11
+	}
+	return srcSize + (srcSize >> 8) + margin
+}
+
 func compress(cctx, cctxDict *cctxWrapper, dst, src []byte, cd *CDict, compressionLevel int) []byte {
 	if len(src) == 0 {
 		return dst
@@ -137,7 +146,7 @@ func compress(cctx, cctxDict *cctxWrapper, dst, src []byte, cd *CDict, compressi
 	}
 
 	// Slow path - resize dst to fit compressed data.
-	compressBound := int(C.ZSTD_compressBound(C.size_t(len(src)))) + 1
+	compressBound := CompressBound(len(src)) + 1
 	if n := dstLen + compressBound - cap(dst) + dstLen; n > 0 {
 		// This should be optimized since go 1.11 - see https://golang.org/doc/go1.11#performance-compiler.
 		dst = append(dst[:cap(dst)], make([]byte, n)...)
@@ -146,10 +155,6 @@ func compress(cctx, cctxDict *cctxWrapper, dst, src []byte, cd *CDict, compressi
 	result := compressInternal(cctx, cctxDict, dst[dstLen:dstLen+compressBound], src, cd, compressionLevel, true)
 	compressedSize := int(result)
 	dst = dst[:dstLen+compressedSize]
-	if cap(dst)-len(dst) > 4096 {
-		// Re-allocate dst in order to remove superflouos capacity and reduce memory usage.
-		dst = append([]byte{}, dst...)
-	}
 	return dst
 }
 
