@@ -116,6 +116,15 @@ type cctxWrapper struct {
 	cctx *C.ZSTD_CCtx
 }
 
+func CompressBound(srcSize int) int {
+       lowLimit := 128 << 10 // 128 kB
+       var margin int
+       if srcSize < lowLimit {
+               margin = (lowLimit - srcSize) >> 11
+       }
+       return srcSize + (srcSize >> 8) + margin
+}
+
 func compress(cctx, cctxDict *cctxWrapper, dst, src []byte, cd *CDict, compressionLevel int) []byte {
 	if len(src) == 0 {
 		return dst
@@ -137,7 +146,7 @@ func compress(cctx, cctxDict *cctxWrapper, dst, src []byte, cd *CDict, compressi
 	}
 
 	// Slow path - resize dst to fit compressed data.
-	compressBound := int(C.ZSTD_compressBound(C.size_t(len(src)))) + 1
+	compressBound := CompressBound(len(src)) + 1
 	if n := dstLen + compressBound - cap(dst) + dstLen; n > 0 {
 		// This should be optimized since go 1.11 - see https://golang.org/doc/go1.11#performance-compiler.
 		dst = append(dst[:cap(dst)], make([]byte, n)...)
